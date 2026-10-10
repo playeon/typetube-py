@@ -1,24 +1,38 @@
+from .client import TypeTube, AsyncTypeTube, TypeTubeError, create_client
 from .types import (
-    AudioStream,
-    DownloadResult,
-    SearchItem,
-    Thumbnail,
     TrackResult,
-    TypeTubeError,
-    UsageInfo,
+    AudioStream,
     VideoStream,
+    Thumbnail,
+    SearchItem,
+    DownloadProgress,
+    DownloadResult,
 )
-from .client import TypeTubeClient, create_client
+from .tap import (
+    TapClient,
+    TapConnection,
+    TapOrigin,
+    TapIntent,
+    TapFlags,
+    TapFrame,
+)
 
 __all__ = [
-    "AudioStream",
-    "DownloadResult",
-    "SearchItem",
-    "Thumbnail",
-    "TrackResult",
+    "TypeTube",
+    "AsyncTypeTube",
     "TypeTubeError",
-    "UsageInfo",
-    "VideoStream",
-    "TypeTubeClient",
     "create_client",
+    "TrackResult",
+    "AudioStream",
+    "VideoStream",
+    "Thumbnail",
+    "SearchItem",
+    "DownloadProgress",
+    "DownloadResult",
+    "TapClient",
+    "TapConnection",
+    "TapOrigin",
+    "TapIntent",
+    "TapFlags",
+    "TapFrame",
 ]

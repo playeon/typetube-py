@@ -1,49 +1,110 @@
+"""
+TypeTube Protocol Buffers serializer and deserializer in pure Python.
+Matches src/protocol.ts wire format exactly.
+"""
+from __future__ import annotations
 import struct
-from typing import List, Any
-from .types import TrackResult, AudioStream, VideoStream, Thumbnail, SearchItem
+from typing import Any, List, Optional, Tuple, Dict
+
+class ProtoWriter:
+    def __init__(self) -> None:
+        self.buf = bytearray()
+
+    @property
+    def length(self) -> int:
+        return len(self.buf)
+
+    def write_tag(self, field: int, wire: int) -> None:
+        self.write_varint((field << 3) | wire)
+
+    def write_varint(self, value: int) -> None:
+        v = value & 0xFFFFFFFF
+        while v >= 0x80:
+            self.buf.append((v & 0x7F) | 0x80)
+            v >>= 7
+        self.buf.append(v)
+
+    def write_string(self, field: int, s: Optional[str]) -> None:
+        if not s:
+            return
+        utf8 = s.encode("utf-8")
+        self.write_tag(field, 2)
+        self.write_varint(len(utf8))
+        self.buf.extend(utf8)
+
+    def write_uint32(self, field: int, val: Optional[int]) -> None:
+        if val is None or val == 0:
+            return
+        self.write_tag(field, 0)
+        self.write_varint(val)
+
+    def write_bool(self, field: int, val: Optional[bool]) -> None:
+        if not val:
+            return
+        self.write_tag(field, 0)
+        self.write_varint(1)
+
+    def write_double(self, field: int, val: Optional[float]) -> None:
+        if val is None or val == 0:
+            return
+        self.write_tag(field, 1)
+        self.buf.extend(struct.pack("<d", float(val)))
+
+    def write_message(self, field: int, writer: ProtoWriter) -> None:
+        b = bytes(writer.buf)
+        if not b:
+            return
+        self.write_tag(field, 2)
+        self.write_varint(len(b))
+        self.buf.extend(b)
+
+    def to_bytes(self) -> bytes:
+        return bytes(self.buf)
+
 
 class ProtoReader:
-    def __init__(self, data: bytes):
-        self.data = data
+    def __init__(self, data: bytes) -> None:
+        self.buf = data
         self.pos = 0
-        self.length = len(data)
 
     @property
     def has_more(self) -> bool:
-        return self.pos < self.length
+        return self.pos < len(self.buf)
+
+    def read_tag(self) -> Tuple[int, int]:
+        tag = self.read_varint()
+        return tag >> 3, tag & 0x07
 
     def read_varint(self) -> int:
         res = 0
         shift = 0
-        while self.pos < self.length:
-            b = self.data[self.pos]
+        while True:
+            if self.pos >= len(self.buf):
+                return res
+            b = self.buf[self.pos]
             self.pos += 1
             res |= (b & 0x7F) << shift
-            if (b & 0x80) == 0:
-                return res
+            if not (b & 0x80):
+                break
             shift += 7
         return res
 
-    def read_tag(self):
-        v = self.read_varint()
-        return v >> 3, v & 0x7
-
     def read_string(self) -> str:
         length = self.read_varint()
-        sub = self.data[self.pos:self.pos + length]
+        data = self.buf[self.pos : self.pos + length]
         self.pos += length
-        return sub.decode("utf-8", errors="replace")
+        return data.decode("utf-8", errors="replace")
 
     def read_double(self) -> float:
-        val = struct.unpack("<d", self.data[self.pos:self.pos + 8])[0]
+        val = struct.unpack("<d", self.buf[self.pos : self.pos + 8])[0]
         self.pos += 8
         return val
 
     def read_bytes(self) -> bytes:
         length = self.read_varint()
-        sub = self.data[self.pos:self.pos + length]
+        data = self.buf[self.pos : self.pos + length]
         self.pos += length
-        return sub
+        return data
 
     def skip(self, wire: int) -> None:
         if wire == 0:
@@ -56,188 +117,194 @@ class ProtoReader:
         elif wire == 5:
             self.pos += 4
 
-def read_thumbnail(data: bytes) -> Thumbnail:
-    r = ProtoReader(data)
-    url = ""
-    width = None
-    height = None
+
+def _read_thumbnail(buf: bytes) -> Dict[str, Any]:
+    r = ProtoReader(buf)
+    thumb: Dict[str, Any] = {}
     while r.has_more:
         field, wire = r.read_tag()
         if field == 1:
-            url = r.read_string()
+            thumb["url"] = r.read_string()
         elif field == 2:
-            width = r.read_varint()
+            thumb["width"] = r.read_varint()
         elif field == 3:
-            height = r.read_varint()
+            thumb["height"] = r.read_varint()
         else:
             r.skip(wire)
-    return Thumbnail(url=url, width=width, height=height)
+    return thumb
 
-def read_audio_stream(data: bytes) -> AudioStream:
-    r = ProtoReader(data)
-    itag = 0
-    quality = ""
-    mime_type = ""
-    bitrate = 0
-    url = ""
-    is_hifi = False
-    raw_url = None
+
+def _read_audio_stream(buf: bytes) -> Dict[str, Any]:
+    r = ProtoReader(buf)
+    stream: Dict[str, Any] = {"isHiFi": False}
     while r.has_more:
         field, wire = r.read_tag()
         if field == 1:
-            itag = r.read_varint()
+            stream["itag"] = r.read_varint()
         elif field == 2:
-            quality = r.read_string()
+            stream["quality"] = r.read_string()
         elif field == 3:
-            mime_type = r.read_string()
+            stream["mimeType"] = r.read_string()
         elif field == 4:
-            bitrate = r.read_varint()
+            stream["bitrate"] = r.read_varint()
         elif field == 5:
-            url = r.read_string()
+            stream["url"] = r.read_string()
         elif field == 6:
-            is_hifi = r.read_varint() == 1
+            stream["isHiFi"] = (r.read_varint() == 1)
         elif field == 7:
-            raw_url = r.read_string()
+            stream["rawUrl"] = r.read_string()
         else:
             r.skip(wire)
-    return AudioStream(
-        itag=itag,
-        quality=quality,
-        mime_type=mime_type,
-        bitrate=bitrate,
-        url=url,
-        is_hifi=is_hifi,
-        raw_url=raw_url
-    )
+    return stream
 
-def read_video_stream(data: bytes) -> VideoStream:
-    r = ProtoReader(data)
-    itag = 0
-    quality = ""
-    resolution = None
-    mime_type = ""
-    url = ""
+
+def _read_video_stream(buf: bytes) -> Dict[str, Any]:
+    r = ProtoReader(buf)
+    stream: Dict[str, Any] = {}
     while r.has_more:
         field, wire = r.read_tag()
         if field == 1:
-            itag = r.read_varint()
+            stream["itag"] = r.read_varint()
         elif field == 2:
-            quality = r.read_string()
+            stream["quality"] = r.read_string()
         elif field == 3:
-            resolution = r.read_string()
+            stream["resolution"] = r.read_string()
         elif field == 4:
-            mime_type = r.read_string()
+            stream["mimeType"] = r.read_string()
         elif field == 5:
-            url = r.read_string()
+            stream["url"] = r.read_string()
         else:
             r.skip(wire)
-    return VideoStream(
-        itag=itag,
-        quality=quality,
-        resolution=resolution,
-        mime_type=mime_type,
-        url=url
-    )
+    return stream
 
-def decode_track_result(data: bytes) -> TrackResult:
-    r = ProtoReader(data)
-    success = False
-    query = ""
-    video_id = ""
-    title = ""
-    author = ""
-    uploader = None
-    artist_avatar = None
-    duration_seconds = 0
-    thumbnail = ""
-    thumbnails: List[Thumbnail] = []
-    latency_ms = 0.0
-    best_audio = None
-    best_video = None
-    audio_streams: List[AudioStream] = []
-    video_streams: List[VideoStream] = []
 
+def _read_meta(buf: bytes) -> Dict[str, Any]:
+    r = ProtoReader(buf)
+    meta: Dict[str, Any] = {}
     while r.has_more:
         field, wire = r.read_tag()
         if field == 1:
-            success = r.read_varint() == 1
+            meta["latencyMs"] = r.read_varint() if wire == 0 else round(r.read_double(), 2)
         elif field == 2:
-            query = r.read_string()
+            meta["timestamp"] = r.read_double()
         elif field == 3:
-            video_id = r.read_string()
+            meta["total"] = r.read_varint()
         elif field == 4:
-            title = r.read_string()
+            meta["limit"] = r.read_varint()
         elif field == 5:
-            author = r.read_string()
+            meta["sLatencyMS"] = r.read_varint() if wire == 0 else round(r.read_double(), 2)
         elif field == 6:
-            uploader = r.read_string()
+            meta["eLatencyMS"] = r.read_varint() if wire == 0 else round(r.read_double(), 2)
         elif field == 7:
-            artist_avatar = r.read_string()
+            meta["tLatencyMS"] = r.read_varint() if wire == 0 else round(r.read_double(), 2)
+        else:
+            r.skip(wire)
+    return meta
+
+
+def _read_error(buf: bytes) -> Dict[str, Any]:
+    r = ProtoReader(buf)
+    err: Dict[str, Any] = {}
+    while r.has_more:
+        field, wire = r.read_tag()
+        if field == 1:
+            err["code"] = r.read_string()
+        elif field == 2:
+            err["message"] = r.read_string()
+        elif field == 3:
+            err["statusCode"] = r.read_varint()
+        else:
+            r.skip(wire)
+    return err
+
+
+def _read_track_data(buf: bytes) -> Dict[str, Any]:
+    r = ProtoReader(buf)
+    track: Dict[str, Any] = {
+        "thumbnails": [],
+        "audioStreams": [],
+        "videoStreams": []
+    }
+    while r.has_more:
+        field, wire = r.read_tag()
+        if field == 1:
+            track["id"] = r.read_string()
+            track["query"] = track["id"]
+        elif field == 2:
+            track["title"] = r.read_string()
+        elif field == 3:
+            track["author"] = r.read_string()
+        elif field == 4:
+            track["uploader"] = r.read_string()
+        elif field == 5:
+            track["artistAvatar"] = r.read_string()
+        elif field == 6:
+            track["durationSeconds"] = r.read_varint()
+        elif field == 7:
+            track["thumbnail"] = r.read_string()
         elif field == 8:
-            duration_seconds = r.read_varint()
+            track["thumbnails"].append(_read_thumbnail(r.read_bytes()))
         elif field == 9:
-            thumbnail = r.read_string()
+            track["bestAudio"] = _read_audio_stream(r.read_bytes())
         elif field == 10:
-            thumbnails.append(read_thumbnail(r.read_bytes()))
+            track["bestVideo"] = _read_video_stream(r.read_bytes())
         elif field == 11:
-            latency_ms = r.read_double()
+            track["audioStreams"].append(_read_audio_stream(r.read_bytes()))
         elif field == 12:
-            best_audio = read_audio_stream(r.read_bytes())
-        elif field == 13:
-            best_video = read_video_stream(r.read_bytes())
-        elif field == 14:
-            audio_streams.append(read_audio_stream(r.read_bytes()))
-        elif field == 15:
-            video_streams.append(read_video_stream(r.read_bytes()))
+            track["videoStreams"].append(_read_video_stream(r.read_bytes()))
         else:
             r.skip(wire)
+    return track
 
-    return TrackResult(
-        success=success,
-        query=query,
-        id=video_id,
-        title=title,
-        author=author,
-        uploader=uploader,
-        artist_avatar=artist_avatar,
-        duration_seconds=duration_seconds,
-        thumbnail=thumbnail,
-        thumbnails=thumbnails,
-        latency_ms=latency_ms,
-        best_audio=best_audio,
-        best_video=best_video,
-        audio_streams=audio_streams,
-        video_streams=video_streams
-    )
 
-def decode_search_results(data: bytes) -> List[SearchItem]:
-    r = ProtoReader(data)
-    items: List[SearchItem] = []
+def decode_track_result(buf: bytes) -> Dict[str, Any]:
+    r = ProtoReader(buf)
+    envelope: Dict[str, Any] = {"success": False}
     while r.has_more:
         field, wire = r.read_tag()
-        if field == 2:
-            item_data = r.read_bytes()
-            ir = ProtoReader(item_data)
-            item_id = ""
-            title = ""
-            url = ""
-            duration = None
-            uploader = None
+        if field == 1:
+            envelope["success"] = (r.read_varint() == 1)
+        elif field == 2:
+            envelope["data"] = _read_track_data(r.read_bytes())
+        elif field == 3:
+            envelope["meta"] = _read_meta(r.read_bytes())
+        elif field == 4:
+            envelope["error"] = _read_error(r.read_bytes())
+        else:
+            r.skip(wire)
+    return envelope
+
+
+def decode_search_results(buf: bytes) -> Dict[str, Any]:
+    r = ProtoReader(buf)
+    envelope: Dict[str, Any] = {"success": False, "data": []}
+    while r.has_more:
+        field, wire = r.read_tag()
+        if field == 1:
+            envelope["success"] = (r.read_varint() == 1)
+        elif field == 2:
+            item_buf = r.read_bytes()
+            ir = ProtoReader(item_buf)
+            item: Dict[str, Any] = {"duration": None, "uploader": None}
             while ir.has_more:
                 ifield, iwire = ir.read_tag()
                 if ifield == 1:
-                    item_id = ir.read_string()
+                    item["id"] = ir.read_string()
                 elif ifield == 2:
-                    title = ir.read_string()
+                    item["title"] = ir.read_string()
                 elif ifield == 3:
-                    url = ir.read_string()
+                    item["url"] = ir.read_string()
                 elif ifield == 4:
-                    duration = ir.read_varint()
+                    item["duration"] = ir.read_varint()
                 elif ifield == 5:
-                    uploader = ir.read_string()
+                    item["uploader"] = ir.read_string()
                 else:
                     ir.skip(iwire)
-            items.append(SearchItem(id=item_id, title=title, url=url, duration=duration, uploader=uploader))
+            envelope["data"].append(item)
+        elif field == 3:
+            envelope["meta"] = _read_meta(r.read_bytes())
+        elif field == 4:
+            envelope["error"] = _read_error(r.read_bytes())
         else:
             r.skip(wire)
-    return items
+    return envelope

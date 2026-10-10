@@ -1,17 +1,9 @@
+"""
+Data classes and types matching types.ts.
+"""
+from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Any
-
-class TypeTubeError(Exception):
-    def __init__(self, message: str, status_code: Optional[int] = None):
-        super().__init__(message)
-        self.message = message
-        self.status_code = status_code
-
-@dataclass
-class Thumbnail:
-    url: str
-    width: Optional[int] = None
-    height: Optional[int] = None
+from typing import Optional, List, Dict, Any, Callable
 
 @dataclass
 class AudioStream:
@@ -23,13 +15,22 @@ class AudioStream:
     is_hifi: bool = False
     raw_url: Optional[str] = None
 
+
 @dataclass
 class VideoStream:
     itag: int
     quality: str
+    resolution: str
     mime_type: str
     url: str
-    resolution: Optional[str] = None
+
+
+@dataclass
+class Thumbnail:
+    url: str
+    width: Optional[int] = None
+    height: Optional[int] = None
+
 
 @dataclass
 class TrackResult:
@@ -38,16 +39,18 @@ class TrackResult:
     id: str
     title: str
     author: str
+    uploader: str
+    artist_avatar: Optional[str]
     duration_seconds: int
-    thumbnail: str
-    latency_ms: float
-    best_audio: AudioStream
-    uploader: Optional[str] = None
-    artist_avatar: Optional[str] = None
-    best_video: Optional[VideoStream] = None
+    thumbnail: Optional[str]
     thumbnails: List[Thumbnail] = field(default_factory=list)
+    latency_ms: float = 0.0
+    meta: Dict[str, Any] = field(default_factory=dict)
+    best_audio: Optional[AudioStream] = None
+    best_video: Optional[VideoStream] = None
     audio_streams: List[AudioStream] = field(default_factory=list)
     video_streams: List[VideoStream] = field(default_factory=list)
+
 
 @dataclass
 class SearchItem:
@@ -57,59 +60,21 @@ class SearchItem:
     duration: Optional[int] = None
     uploader: Optional[str] = None
 
+
 @dataclass
-class UsageInfo:
-    success: bool
-    key_type: str
-    limit: int
-    used: int
-    remaining: int
-    reset_in_seconds: int
-    window_seconds: int
-    daily_limit: int
-    daily_used: int
-    daily_remaining: int
-    daily_reset_in_seconds: int
+class DownloadProgress:
+    phase: str
+    percent: float
+    downloaded_bytes: int
+    total_bytes: int
+    speed_mbps: float
 
-    @property
-    def tier(self) -> str:
-        return self.key_type
-
-    @property
-    def resolve_limit(self) -> int:
-        return self.limit
-
-    @property
-    def resolve_remaining(self) -> int:
-        return self.remaining
-
-    @property
-    def reset_seconds(self) -> int:
-        return self.reset_in_seconds
 
 @dataclass
 class DownloadResult:
-    success: bool
     file_path: str
     file_name: str
-    size_bytes: int
-    file_size_mb: float
-    duration_sec: float
-    speed_mbps: float
-    id: str
-    title: str
-    author: str
+    file_size_bytes: int
     duration_seconds: int
-    track: TrackResult
-
-    @property
-    def path(self) -> str:
-        return self.file_path
-
-    @property
-    def bytes_written(self) -> int:
-        return self.size_bytes
-
-    @property
-    def average_speed_mbps(self) -> float:
-        return self.speed_mbps
+    duration_ms: float
+    average_speed_mbps: float

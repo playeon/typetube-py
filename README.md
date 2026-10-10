@@ -1,115 +1,212 @@
-# typetube-py
+# TypeTube
 
-[![PyPI version](https://img.shields.io/pypi/v/typetube.svg)](https://pypi.org/project/typetube/)
-[![Python versions](https://img.shields.io/pypi/pyversions/typetube.svg)](https://pypi.org/project/typetube/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+High-performance YouTube stream resolver and unthrottled downloader for Python powered by TAP (Tagged Asynchronous Protocol).
 
-Official Python client library for the [TypeTube](https://typetube.xysushi.in) streaming API.
+Features:
+- Sub-second full stream resolution for search queries and direct video URLs
+- Tagged Asynchronous Protocol (TAP) with binary RPC multiplexing over persistent sockets
+- Direct Google Video CDN URLs with automatic stream selection
+- Multi-worker range downloads (up to 32 parallel workers) to avoid speed throttling
+- Automatic recovery when stream URLs expire mid-flight
+- Optional video and audio muxing to MP4 via FFmpeg
+- Native Asynchronous (`AsyncTypeTube`) engine with synchronous (`TypeTube`) wrapper support
 
-Delivers **sub-second latency** stream extraction and ultra-fast parallel audio downloading with **zero external dependencies** (uses only standard library `urllib`, `concurrent.futures`, `dataclasses`).
+## Public Access & Limits
 
-## Features
+The client connects to the official public cluster by default. Public access is granted automatically per IP address:
 
-- ⚡ **Sub-Second Latency**: Lightning-fast resolution (~200–400ms cached, sub-second uncached) powered by high-performance Protobuf wire decoding.
-- 🚀 **Zero Dependencies**: Pure Python 3.9+ standard library. No bloated dependency trees.
-- 📦 **Native Protobuf Wire Decoding**: High-throughput binary deserialization directly from `/v1/resolve` and `/v1/search`.
-- ⚡ **Multi-Worker Range Downloads**: Parallel multi-stream chunked downloading that bypasses standard throttling.
-- 🔍 **Search & Stream Resolution**: Resolve YouTube audio/video via queries, video IDs, or direct URLs.
-- 📊 **Quota & Usage Inspection**: Built-in monitoring for rate limits and remaining calls (`/v1/usage`).
+- **60 resolves / minute** per IP
+- **1,500 resolves / day** per IP
+- *Public limits are subject to change at any time without notice*
+
+### Hi-Fi 256kbps Audio & Private API Keys
+
+- **Public access** provides standard audio streams (up to 128kbps / 160kbps)
+- **Private API keys** unlock unthrottled 256kbps Hi-Fi AAC (`itag 141`) and 272kbps Opus (`itag 774`) streams, higher throughput quotas, and priority cluster routing
+
+> **Regional Notice**: The cluster is currently located in Singapore only. Due to YouTube regional restrictions, some original VEVO tracks may not be downloadable or playable when accessed from outside Singapore. An India cluster will be added soon.
+
+To request a private API key, join our Telegram channel: **[@PlayeonX](https://t.me/PlayeonX)**
 
 ## Installation
-
-### From PyPI (Recommended)
 
 ```bash
 pip install typetube
 ```
 
-### Direct from GitHub
+Requires Python 3.9 or higher. If you plan to mux video and audio into a single MP4 file, make sure `ffmpeg` is installed on your system.
 
-```bash
-pip install git+https://github.com/playeon/typetube-py.git
-```
+## Quick Start (SDK)
 
-### From Source
-
-```bash
-git clone https://github.com/playeon/typetube-py.git
-cd typetube-py
-pip install .
-```
-
-## Quick Start
+### Asynchronous (Recommended)
 
 ```python
-from typetube import create_client
+import asyncio
+from typetube import AsyncTypeTube
 
-client = create_client(
-    endpoint="https://typetube.xysushi.in",
-    api_key="your_api_key_here",
+async def main():
+    # Initializes client (connects to default public cluster)
+    client = AsyncTypeTube()
+
+    # 1. Resolve metadata and stream manifests
+    track = await client.resolve("ReoNa 『ないない』-Music Video-")
+    print(track.title, f"({track.duration_seconds}s)")
+    print("Audio Stream URL:", track.best_audio.url)
+
+    # 2. Download audio with 4 parallel range workers
+    audio = await client.download_audio(
+        track,
+        dest_path="./music",
+        audio_quality="highest",
+        workers=4,
+        on_progress=lambda p: print(f"{p.percent}% - {p.speed_mbps:.1f} MB/s")
+    )
+    print("Audio saved to:", audio.file_path)
+
+    # 3. Download 1080p video muxed with audio
+    video = await client.download_media(
+        track,
+        dest_path="./videos",
+        quality="1080p",
+        output_format="mp4",
+        on_progress=lambda p: print(f"{p.phase}: {p.percent}%")
+    )
+    print("Video saved to:", video.file_path)
+
+    client.close()
+
+asyncio.run(main())
+```
+
+### Synchronous
+
+```python
+from typetube import TypeTube
+
+client = TypeTube()
+
+track = client.resolve("ReoNa 『ないない』-Music Video-")
+print(track.title, track.best_audio.url)
+
+audio = client.download_audio(track, dest_path="./music")
+print("Audio saved to:", audio.file_path)
+
+client.close()
+```
+
+## Client Configuration
+
+```python
+from typetube import AsyncTypeTube
+
+# 1. Default public cluster
+client = AsyncTypeTube()
+
+# 2. Private access with an API key
+private_client = AsyncTypeTube(api_key="YOUR_PRIVATE_KEY")
+
+# 3. Custom cluster endpoint
+custom_client = AsyncTypeTube(
+    api_key="YOUR_PRIVATE_KEY",
+    host="tap://sg.clusters.typetube.xyz",
+    port=8443,
+    timeout_ms=15000
 )
-
-result = client.resolve("Rick Astley - Never Gonna Give You Up")
-print(result.title)
-print(result.author)
-if result.best_audio:
-    print(result.best_audio.url)
-
-client.download_audio(result, "track.m4a", workers=8)
 ```
 
-## Usage
+## Methods
 
-### Stream Resolution
+### `await client.resolve(query, max_video_height=None)`
 
-Resolve YouTube videos by search query, video ID, or direct URL:
+Resolves a video URL, video ID, or search query into a complete track object with sub-second latency.
 
 ```python
-result = client.resolve("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
-print(f"Title: {result.title}")
-print(f"Duration: {result.duration_seconds}s")
-if result.best_audio:
-    print(f"Best Audio Bitrate: {result.best_audio.bitrate} bps")
-    print(f"Best Audio URL: {result.best_audio.url}")
+track = await client.resolve("https://www.youtube.com/watch?v=dQw4w9WgXcQ", max_video_height=1080)
 ```
 
-### Search
+Returns `TrackResult`:
+- `id`: YouTube video ID
+- `title`: Video title
+- `author`: Channel name
+- `duration_seconds`: Track duration in seconds
+- `best_audio`: Best available audio stream (prefers 256kbps AAC or Opus on private keys)
+- `best_video`: Best available video stream matching `max_video_height`
+- `audio_streams`: List of audio streams
+- `video_streams`: List of video streams
+- `thumbnails`: Array of thumbnail objects with dimensions
+- `latency_ms`: Resolution latency in milliseconds
 
-Search for tracks:
+### `await client.search(query, limit=10)`
+
+Searches YouTube and returns a ranked list of items.
 
 ```python
-results = client.search("Hans Zimmer Interstellar", limit=5)
+results = await client.search("daft punk", limit=5)
 for item in results:
-    print(f"{item.title} ({item.duration}) - {item.url}")
+    print(item.title, item.url)
 ```
 
-### Parallel Chunked Audio Download
+### `await client.download_audio(track_or_query, dest_path="./downloads", audio_quality="highest", workers=4, on_progress=None)`
 
-Download audio with multi-worker parallel HTTP range requests:
+Downloads the audio stream to disk using multi-worker HTTP range requests.
+
+### `await client.download_video(track_or_query, dest_path="./downloads", quality="1080p", workers=6, on_progress=None)`
+
+Downloads the standalone adaptive video stream to disk using multi-worker range requests.
+
+### `await client.download_media(track_or_query, dest_path="./downloads", quality="1080p", audio_quality="highest", output_format="mp4", workers=6, on_progress=None)`
+
+Downloads both audio and video streams in parallel, then muxes them into a single MP4 container using FFmpeg.
+
+### `await client.ping()`
+
+Pings the active socket connection and returns live round-trip latency in milliseconds.
 
 ```python
-download_res = client.download_audio(
-    result,
-    output_path="never_gonna_give_you_up.m4a",
-    workers=8,
-    chunk_size=1048576,
-)
-
-print(f"Downloaded {download_res.bytes_written} bytes to {download_res.path}")
-print(f"Average speed: {download_res.average_speed_mbps:.2f} MB/s")
+latency = await client.ping()
+print(f"Socket RTT: {latency:.2f} ms")
 ```
 
-### Quota and Usage
+### `client.close()`
 
-Inspect quota limits and remaining calls:
+Closes the active connection.
 
 ```python
-usage = client.usage()
-print(f"IP: {usage.ip}")
-print(f"Tier: {usage.tier}")
-print(f"Resolve remaining: {usage.resolve_remaining}/{usage.resolve_limit}")
-print(f"Reset in: {usage.reset_seconds}s")
+client.close()
 ```
+
+## Interactive CLI Shell
+
+TypeTube provides a persistent interactive shell that keeps a TAP connection open across commands:
+
+```bash
+# Launch interactive shell
+typetube
+```
+
+Inside the interactive shell:
+```text
+typetube> "ReoNa ないない"
+typetube> "ReoNa ないない" -v -f 1080p -o ./videos
+typetube> "queen bohemian rhapsody" -x -a hifi -o ./music -N 8
+typetube> exit
+```
+
+### CLI Command Flags
+
+- `-v`, `--video`: Download video muxed with audio to MP4
+- `--video-only`: Download raw adaptive video stream without audio
+- `-x`, `--audio-only`: Download audio stream only
+- `-f`, `--format <quality>`: Video resolution: `2160p`, `1440p`, `1080p`, `720p`, `480p`, `360p`, `highest`, `lowest` (default: `1080p`)
+- `-a`, `--audio-quality <q>`: Audio quality: `highest`, `hifi`, `256kbps`, `128kbps`, `lowest` (default: `highest`)
+- `-c`, `--codec <name>`: Preferred video codec: `avc1` (H.264), `vp9`, `av01` (AV1), `any` (default: `avc1`)
+- `--ext <mp4|mkv|webm>`: Output container format (default: `mp4`)
+- `-o`, `--output <path>`: Destination file path or directory (default: `./downloads`)
+- `-N`, `--workers <count>`: Number of parallel download workers: 1 to 32 (default: 4 for audio, 6 for video)
+- `--chunk-size <mb>`: Range chunk size in MB (default: 10)
+- `-e`, `--get-title`: Print track title
+- `--get-id`: Print video ID
+- `--get-thumbnail`: Print high-resolution thumbnail URL
 
 ## License
 
