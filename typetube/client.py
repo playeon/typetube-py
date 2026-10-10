@@ -587,9 +587,16 @@ class AsyncTypeTube:
                         curr_url = urllib.parse.urljoin(curr_url, loc)
                         conn.close()
                         continue
+                    if resp.status == 403:
+                        raise TypeTubeError(
+                            "Stream download forbidden (HTTP 403). This track may be restricted to the cluster's region, blocking foreign requests. Try connecting to a different cluster (e.g. tap://nl.clusters.typetube.xyz or tap://sg.clusters.typetube.xyz).",
+                            403
+                        )
                     cr = resp.getheader("Content-Range")
                     if cr and "/" in cr:
                         return int(cr.split("/")[-1]), curr_url
+                except TypeTubeError:
+                    raise
                 except Exception:
                     return None, curr_url
                 finally:
@@ -634,6 +641,11 @@ class AsyncTypeTube:
                         curr_url = urllib.parse.urljoin(curr_url, loc)
                         conn.close()
                         continue
+                    if resp.status == 403:
+                        raise TypeTubeError(
+                            "Stream download forbidden (HTTP 403). This track may be restricted to the cluster's region, blocking foreign requests. Try connecting to a different cluster (e.g. tap://nl.clusters.typetube.xyz or tap://sg.clusters.typetube.xyz).",
+                            403
+                        )
                     if resp.status not in (200, 206):
                         raise TypeTubeError(f"Range chunk failed with status {resp.status}", resp.status)
                     return resp.read()
@@ -677,6 +689,13 @@ class AsyncTypeTube:
             try:
                 conn.request("GET", path, headers=headers)
                 resp = conn.getresponse()
+                if resp.status == 403:
+                    raise TypeTubeError(
+                        "Stream download forbidden (HTTP 403). This track may be restricted to the cluster's region, blocking foreign requests. Try connecting to a different cluster (e.g. tap://nl.clusters.typetube.xyz or tap://sg.clusters.typetube.xyz).",
+                        403
+                    )
+                if resp.status not in (200, 206):
+                    raise TypeTubeError(f"Download stream failed with status {resp.status}", resp.status)
                 total = int(resp.getheader("Content-Length", 0))
                 with open(dest_path, "wb") as f:
                     while True:
