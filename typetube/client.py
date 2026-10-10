@@ -589,7 +589,7 @@ class AsyncTypeTube:
                         continue
                     if resp.status == 403:
                         raise TypeTubeError(
-                            "Stream download forbidden (HTTP 403). This track may be restricted to the cluster's region, blocking foreign requests. Try connecting to a different cluster (e.g. tap://nl.clusters.typetube.xyz or tap://sg.clusters.typetube.xyz).",
+                            "Stream download forbidden (HTTP 403): track restricted to the cluster's region",
                             403
                         )
                     cr = resp.getheader("Content-Range")
@@ -643,7 +643,7 @@ class AsyncTypeTube:
                         continue
                     if resp.status == 403:
                         raise TypeTubeError(
-                            "Stream download forbidden (HTTP 403). This track may be restricted to the cluster's region, blocking foreign requests. Try connecting to a different cluster (e.g. tap://nl.clusters.typetube.xyz or tap://sg.clusters.typetube.xyz).",
+                            "Stream download forbidden (HTTP 403): track restricted to the cluster's region",
                             403
                         )
                     if resp.status not in (200, 206):
@@ -691,7 +691,7 @@ class AsyncTypeTube:
                 resp = conn.getresponse()
                 if resp.status == 403:
                     raise TypeTubeError(
-                        "Stream download forbidden (HTTP 403). This track may be restricted to the cluster's region, blocking foreign requests. Try connecting to a different cluster (e.g. tap://nl.clusters.typetube.xyz or tap://sg.clusters.typetube.xyz).",
+                        "Stream download forbidden (HTTP 403): track restricted to the cluster's region",
                         403
                     )
                 if resp.status not in (200, 206):
