@@ -1,6 +1,3 @@
-"""
-Data classes and types matching types.ts.
-"""
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any, Callable

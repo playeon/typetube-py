@@ -1,7 +1,3 @@
-"""
-TAP binary frame protocol definitions and encoders.
-Matches src/tap/protocol.ts.
-"""
 from __future__ import annotations
 import struct
 from enum import IntEnum

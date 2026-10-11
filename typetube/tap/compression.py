@@ -1,7 +1,3 @@
-"""
-TAP payload compression and decompression.
-Supports Zstandard (zstd) with fallback to Brotli, matching Node.js zlib.
-"""
 from __future__ import annotations
 import zlib
 

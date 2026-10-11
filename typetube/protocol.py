@@ -1,7 +1,3 @@
-"""
-TypeTube Protocol Buffers serializer and deserializer in pure Python.
-Matches src/protocol.ts wire format exactly.
-"""
 from __future__ import annotations
 import struct
 from typing import Any, List, Optional, Tuple, Dict

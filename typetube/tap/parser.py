@@ -1,7 +1,3 @@
-"""
-Stream parser for incremental chunked TAP frames.
-Matches src/tap/parser.ts.
-"""
 from __future__ import annotations
 from typing import Optional
 from .protocol import TAP_HEADER_SIZE, TapFrame, parse_header

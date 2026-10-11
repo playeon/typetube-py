@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-"""
-TypeTube interactive CLI shell in Python.
-Matches src/cli.ts.
-"""
 from __future__ import annotations
 import sys
 import os

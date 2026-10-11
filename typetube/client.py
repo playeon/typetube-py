@@ -1,8 +1,3 @@
-"""
-TypeTube client library for Python.
-Provides both AsyncTypeTube (asynchronous) and TypeTube (synchronous) interfaces.
-Includes multi-worker parallel range downloads, IPv4/IPv6 socket binding, and FFmpeg video muxing.
-"""
 from __future__ import annotations
 import asyncio
 import http.client

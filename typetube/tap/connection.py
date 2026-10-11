@@ -1,7 +1,3 @@
-"""
-TAP TCP Connection manager handling asynchronous multiplexing over a single persistent socket.
-Matches src/tap/connection.ts.
-"""
 from __future__ import annotations
 import asyncio
 import os

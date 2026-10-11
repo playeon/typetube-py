@@ -1,7 +1,3 @@
-"""
-TAP cryptographic session management, ECDH key exchange, and AES-256-GCM framing.
-Matches src/tap/crypto.ts.
-"""
 from __future__ import annotations
 import hmac
 import hashlib

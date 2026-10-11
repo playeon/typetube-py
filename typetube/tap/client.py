@@ -1,7 +1,3 @@
-"""
-TapClient wrapper providing automatic reconnection, connection pooling, and retry logic.
-Matches src/tap/client.ts.
-"""
 from __future__ import annotations
 import asyncio
 from typing import Optional, Union, Dict, Any
